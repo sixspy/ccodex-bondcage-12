@@ -1,7 +1,11 @@
 export const forfeitViewTemplate = `
 <section class="panel">
   <h2>罚没册</h2>
-  <p class="hint">仅核验违约的笼可罚没。资金离开当事人账户，进入罚没册，不再回到可用余额。</p>
+  <p class="hint">仅核验违约且新结论有效（未因增补作废）的笼可罚没。资金离开当事人账户，进入罚没册，不再回到可用余额。</p>
+  <div v-if="recheckPending.length" class="stub-banner">
+    <strong>罚没口已关 {{ recheckPending.length }} 笼</strong>：增补扩额后旧结论作废，须重核才能罚没。
+    <span v-for="p in recheckPending" :key="'g'+p.cage_id">{{ p.cage_code }}</span>
+  </div>
   <div class="grid-2">
     <div>
       <div class="form-row">

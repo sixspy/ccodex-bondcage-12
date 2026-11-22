@@ -7,8 +7,27 @@ from auth import AuthHeader, require_user, require_writer
 from db import connect, now_iso, write_audit
 from locks import release, require_lock
 from models import ReleaseIn
+from recheck_policy import DEVIATION_ACTION
+from recheck_svc import pending_recheck
 
 router = APIRouter(tags=["release"])
+
+
+def _refuse_stale(conn, actor: str, cage) -> None:
+    """旧结论已被增补作废，出金口须留偏航痕并拒绝。"""
+    write_audit(
+        conn,
+        actor,
+        DEVIATION_ACTION,
+        cage["cage_code"],
+        {
+            "reason": "release_on_voided_attestation",
+            "cage_generation": int(cage["generation"]),
+            "cage_status": cage["status"],
+        },
+    )
+    conn.commit()
+    raise HTTPException(409, "重核偏航：旧核验结论已因增补作废，须重核后才能出金")
 
 
 @router.get("/api/releases")
@@ -36,17 +55,22 @@ def do_release(body: ReleaseIn, authorization: AuthHeader = None):
             ).fetchone()
             if not cage:
                 raise HTTPException(404, "笼不存在")
+            if cage["status"] == "待重核":
+                _refuse_stale(conn, user, cage)
             if cage["status"] != "核验通过":
                 raise HTTPException(409, "仅核验通过的笼可解笼拨付")
-            # 核验结论必须对齐当前笼代
+            # 核验结论必须对齐当前笼代，且未因增补作废
             att = conn.execute(
                 """SELECT * FROM attestations
                    WHERE cage_id=? AND attest_gen=? AND outcome='通过'
+                     AND voided_at IS NULL
                    ORDER BY id DESC LIMIT 1""",
                 (body.cage_id, int(cage["generation"])),
             ).fetchone()
             if not att:
-                raise HTTPException(409, "缺少与笼代对齐的通过核验")
+                if pending_recheck(conn, body.cage_id):
+                    _refuse_stale(conn, user, cage)
+                raise HTTPException(409, "缺少与笼代对齐的有效通过核验")
             avail = float(cage["available"])
             amount = float(body.amount) if body.amount is not None else avail
             if amount <= 0:

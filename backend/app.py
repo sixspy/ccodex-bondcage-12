@@ -15,6 +15,7 @@ from db import FRONTEND, PRODUCT_META, init_db
 from forfeit_svc import router as forfeit_router
 from locks import router as locks_router
 from reconcile_svc import router as reconcile_router
+from recheck_svc import router as recheck_router
 from release_svc import router as release_router
 from split_svc import router as split_router
 from topup_svc import router as topup_router
@@ -43,6 +44,7 @@ for r in (
     audit_router,
     topup_router,
     split_router,
+    recheck_router,
 ):
     app.include_router(r)
 

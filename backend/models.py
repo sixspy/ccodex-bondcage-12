@@ -46,6 +46,8 @@ class TopupIn(BaseModel):
     cage_id: int
     amount: float = Field(gt=0)
     mode: str = "同笼扩代"
+    path: str = "甲"
+    detail: str = ""
 
 
 class SplitIn(BaseModel):

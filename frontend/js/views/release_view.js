@@ -1,7 +1,13 @@
 export const releaseViewTemplate = `
 <section class="panel">
   <h2>解笼拨付</h2>
-  <p class="hint">仅核验通过的笼可拨付。默认把可用额全额拨给受益人，也可部分解笼。账户余额与冻结同步扣减。</p>
+  <p class="hint">仅核验通过且新结论有效（未因增补作废）的笼可拨付。默认把可用额全额拨给受益人，也可部分解笼。账户余额与冻结同步扣减。</p>
+  <div v-if="recheckPending.length" class="stub-banner">
+    <strong>出金口已关 {{ recheckPending.length }} 笼</strong>：增补扩额后旧结论作废，须重核才能出金。
+    <span v-for="p in recheckPending" :key="'g'+p.cage_id">
+      {{ p.cage_code }}（{{ fmt(p.amount_before) }} → {{ fmt(p.amount) }}）
+    </span>
+  </div>
   <div class="grid-2">
     <div>
       <div class="form-row">

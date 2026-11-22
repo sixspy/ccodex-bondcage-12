@@ -1,0 +1,10 @@
+{
+  "doc": "docs/增补重核纪要.md",
+  "locked_at": "2026-11-22",
+  "path": "甲",
+  "mix_forbidden": [
+    "乙",
+    "影子复检"
+  ],
+  "sha256": "6d2f41a38f0380927acc094c4b754b14f5d1c21fbfe3d573827a455cd4602e21"
+}

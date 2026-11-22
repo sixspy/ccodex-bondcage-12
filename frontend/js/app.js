@@ -48,6 +48,7 @@ createApp({
     const selectedCage = ref(null);
     const topupJobs = ref([]);
     const splitJobs = ref([]);
+    const recheck = ref({ pending: [], cages: [], deviations: [], manifest: {} });
 
     const bondForm = ref({
       party_key: "P-NEW",
@@ -112,6 +113,7 @@ createApp({
 
     function shortStatus(s) {
       if (!s) return "";
+      if (s.includes("待重核")) return "核";
       if (s.includes("冻结")) return "冻";
       if (s.includes("通过")) return "通";
       if (s.includes("违约")) return "违";
@@ -124,12 +126,15 @@ createApp({
       if (!s) return "frozen";
       if (s.includes("通过") || s.includes("解笼")) return "pass";
       if (s.includes("违约") || s.includes("罚没")) return "fail";
+      if (s.includes("待重核")) return "done";
       if (s.includes("冻结")) return "frozen";
       return "done";
     }
 
     const frozenCages = computed(() =>
-      cages.value.filter((c) => c.status === "已冻结")
+      cages.value.filter(
+        (c) => c.status === "已冻结" || c.status === "待重核"
+      )
     );
     const passCages = computed(() =>
       cages.value.filter(
@@ -141,6 +146,15 @@ createApp({
         (c) => c.status === "核验违约" || c.status === "部分罚没"
       )
     );
+    const recheckPending = computed(() => recheck.value.pending || []);
+    const recheckByCage = computed(() => {
+      const m = {};
+      (recheck.value.cages || []).forEach((c) => (m[c.cage_id] = c));
+      return m;
+    });
+    function recheckFor(cageId) {
+      return recheckByCage.value[cageId] || null;
+    }
 
     async function login() {
       err.value = "";
@@ -195,6 +209,7 @@ createApp({
           lk,
           tj,
           sj,
+          rc,
         ] = await Promise.all([
           api.bonds(),
           api.cages(),
@@ -207,6 +222,7 @@ createApp({
           api.locks(),
           api.topupJobs(),
           api.splitJobs(),
+          api.recheckBoard(),
         ]);
         bonds.value = b.items || [];
         cages.value = c.items || [];
@@ -219,6 +235,7 @@ createApp({
         locks.value = lk.items || [];
         topupJobs.value = tj.items || [];
         splitJobs.value = sj.items || [];
+        recheck.value = rc || {};
         if (!attestForm.value.cage_id && frozenCages.value.length) {
           attestForm.value.cage_id = frozenCages.value[0].id;
         }
@@ -362,12 +379,16 @@ createApp({
       }
     }
 
-    async function doTopupStub() {
+    async function doTopup() {
       clearFlash();
       try {
         if (!topupForm.value.cage_id) throw new Error("请选择笼");
-        const row = await api.topupStub(topupForm.value);
-        flashOk(`增补空桩已登记 #${row.job_id}`);
+        const row = await api.topup(topupForm.value);
+        flashOk(
+          `增补已扩额 #${row.job_id}：${fmt(row.amount_before)} → ${fmt(
+            row.amount_after
+          )}，旧结论已作废，待重核才能出金`
+        );
         await refresh();
       } catch (e) {
         flashErr(e);
@@ -417,6 +438,7 @@ createApp({
       selectedCage,
       topupJobs,
       splitJobs,
+      recheck,
       bondForm,
       depositForm,
       freezeForm,
@@ -428,6 +450,9 @@ createApp({
       frozenCages,
       passCages,
       failCages,
+      recheckPending,
+      recheckByCage,
+      recheckFor,
       login,
       logout,
       refresh,
@@ -444,7 +469,7 @@ createApp({
       doForfeit,
       loadReconcile,
       loadProof,
-      doTopupStub,
+      doTopup,
       doSplitStub,
     };
   },

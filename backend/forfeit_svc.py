@@ -7,8 +7,26 @@ from auth import AuthHeader, require_user, require_writer
 from db import connect, now_iso, write_audit
 from locks import release, require_lock
 from models import ForfeitIn
+from recheck_policy import DEVIATION_ACTION
+from recheck_svc import pending_recheck
 
 router = APIRouter(tags=["forfeit"])
+
+
+def _refuse_stale(conn, actor: str, cage) -> None:
+    write_audit(
+        conn,
+        actor,
+        DEVIATION_ACTION,
+        cage["cage_code"],
+        {
+            "reason": "forfeit_on_voided_attestation",
+            "cage_generation": int(cage["generation"]),
+            "cage_status": cage["status"],
+        },
+    )
+    conn.commit()
+    raise HTTPException(409, "重核偏航：旧核验结论已因增补作废，须重核后才能罚没")
 
 
 @router.get("/api/forfeits")
@@ -36,16 +54,21 @@ def do_forfeit(body: ForfeitIn, authorization: AuthHeader = None):
             ).fetchone()
             if not cage:
                 raise HTTPException(404, "笼不存在")
+            if cage["status"] == "待重核":
+                _refuse_stale(conn, user, cage)
             if cage["status"] != "核验违约":
                 raise HTTPException(409, "仅核验违约的笼可罚没")
             att = conn.execute(
                 """SELECT * FROM attestations
                    WHERE cage_id=? AND attest_gen=? AND outcome='违约'
+                     AND voided_at IS NULL
                    ORDER BY id DESC LIMIT 1""",
                 (body.cage_id, int(cage["generation"])),
             ).fetchone()
             if not att:
-                raise HTTPException(409, "缺少与笼代对齐的违约核验")
+                if pending_recheck(conn, body.cage_id):
+                    _refuse_stale(conn, user, cage)
+                raise HTTPException(409, "缺少与笼代对齐的有效违约核验")
             avail = float(cage["available"])
             amount = float(body.amount) if body.amount is not None else avail
             if amount <= 0:

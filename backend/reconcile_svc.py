@@ -34,7 +34,7 @@ def _reconcile_cage(conn, cage) -> dict:
     ).fetchone()
     live_frozen = conn.execute(
         """SELECT COALESCE(SUM(available),0) s FROM cages
-           WHERE party_key=? AND status IN ('已冻结','核验通过','核验违约','部分解笼','部分罚没')""",
+           WHERE party_key=? AND status IN ('已冻结','待重核','核验通过','核验违约','部分解笼','部分罚没')""",
         (party,),
     ).fetchone()["s"]
     return {
@@ -104,7 +104,7 @@ def party_proof(party_key: str, authorization: AuthHeader = None):
         live = conn.execute(
             """SELECT COALESCE(SUM(available),0) s FROM cages
                WHERE party_key=? AND status IN
-               ('已冻结','核验通过','核验违约','部分解笼','部分罚没')""",
+               ('已冻结','待重核','核验通过','核验违约','部分解笼','部分罚没')""",
             (party_key,),
         ).fetchone()["s"]
         released = conn.execute(

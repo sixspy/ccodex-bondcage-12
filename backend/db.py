@@ -23,10 +23,12 @@ PRODUCT_META = {
         "reconcile",
         "locks",
         "audit",
+        "recheck",
         "topup",
         "split",
     ],
-    "stubs": ["topup_cage", "split_cage"],
+    "stubs": ["split_cage"],
+    "recheck_gate": "扩额后必须重核才能出金（甲路径：增补同事务作废旧核验）",
 }
 
 
@@ -87,6 +89,11 @@ CREATE TABLE IF NOT EXISTS attestations(
   attest_gen INTEGER NOT NULL,
   officer TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  voided_at TEXT,
+  voided_by TEXT,
+  void_reason TEXT,
+  superseded_by INTEGER,
+  topup_job_id INTEGER,
   FOREIGN KEY(cage_id) REFERENCES cages(id)
 );
 CREATE TABLE IF NOT EXISTS releases(
@@ -139,7 +146,18 @@ CREATE TABLE IF NOT EXISTS topup_jobs(
   mode TEXT NOT NULL,
   status TEXT NOT NULL,
   detail TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  party_key TEXT,
+  cage_code TEXT,
+  amount_before REAL,
+  amount_after REAL,
+  status_before TEXT,
+  status_after TEXT,
+  generation INTEGER,
+  voided_attestation_id INTEGER,
+  recheck_required INTEGER NOT NULL DEFAULT 1,
+  applied_at TEXT,
+  actor TEXT
 );
 CREATE TABLE IF NOT EXISTS split_jobs(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -272,11 +290,48 @@ def seed_attest_samples(conn: sqlite3.Connection) -> None:
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         seed_users(conn)
         seed_bonds(conn)
         seed_cages(conn)
         seed_attest_samples(conn)
         conn.commit()
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """旧库原地补列，不删行、不换库文件。"""
+    att_cols = {
+        "voided_at": "TEXT",
+        "voided_by": "TEXT",
+        "void_reason": "TEXT",
+        "superseded_by": "INTEGER",
+        "topup_job_id": "INTEGER",
+    }
+    have = _columns(conn, "attestations")
+    for col, typ in att_cols.items():
+        if col not in have:
+            conn.execute(f"ALTER TABLE attestations ADD COLUMN {col} {typ}")
+    job_cols = {
+        "party_key": "TEXT",
+        "cage_code": "TEXT",
+        "amount_before": "REAL",
+        "amount_after": "REAL",
+        "status_before": "TEXT",
+        "status_after": "TEXT",
+        "generation": "INTEGER",
+        "voided_attestation_id": "INTEGER",
+        "recheck_required": "INTEGER NOT NULL DEFAULT 1",
+        "applied_at": "TEXT",
+        "actor": "TEXT",
+    }
+    have = _columns(conn, "topup_jobs")
+    for col, typ in job_cols.items():
+        if col not in have:
+            conn.execute(f"ALTER TABLE topup_jobs ADD COLUMN {col} {typ}")
 
 
 def dashboard_stats(conn: sqlite3.Connection) -> dict:
